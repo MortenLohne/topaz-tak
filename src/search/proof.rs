@@ -449,6 +449,7 @@ where
                 DefenderOutcome::Defenses(moves) => moves,
             }
         };
+        assert!(!moves.is_empty());
 
         if child.game_move == GameMove::null_move() && !self.quiet {
             let debug_vec: Vec<_> = moves.iter().map(|m| m.to_ptn::<T>()).collect();
@@ -491,7 +492,6 @@ where
             crate::board::find_placement_road(enemy, enemy_road_pieces, board.bits().empty());
         moves.clear();
         generate_all_stack_moves(board, &mut moves);
-        assert!(moves.len() > 0); // All stack moves should already be generated
         generate_all_place_moves(board, &mut moves);
         // generate_all_moves(&board, &mut moves); // In practice generating them twice helps??
         let mut moves: Vec<GameMove> = moves
