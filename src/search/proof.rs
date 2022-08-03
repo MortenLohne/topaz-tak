@@ -5,6 +5,7 @@ use crate::RevGameMove;
 use anyhow::{anyhow, Result};
 use std::cmp::min;
 use std::collections::{HashMap, HashSet};
+use std::time;
 use termtree::Tree;
 
 const INFINITY: u32 = 100_000_000;
@@ -301,6 +302,7 @@ where
 
 pub struct TinueSearch<T> {
     pub board: T,
+    excluded: Option<GameMove>,
     bounds_table: HashMap<u64, Bounds>,
     rev_moves: Vec<RevGameMove>,
     zobrist_hist: Vec<u64>,
@@ -323,6 +325,7 @@ where
         let attacker = board.side_to_move();
         Self {
             board,
+            excluded: None,
             bounds_table: HashMap::new(),
             rev_moves: Vec::new(),
             attacker,
@@ -337,9 +340,13 @@ where
             max_nodes: usize::MAX,
         }
     }
+    pub fn exclude(mut self, mv: GameMove) -> Self {
+        self.excluded = Some(mv);
+        self
+    }
     pub fn is_tinue(&mut self) -> Option<bool> {
         let mut root = Child::new(Bounds::root(), GameMove::null_move(), self.board.hash());
-        self.mid(&mut root, 0);
+        self.mid(&mut root, self.excluded, 0);
         if !self.quiet {
             dbg!(self.nodes);
             dbg!(self.tinue_cache_hits);
@@ -378,7 +385,7 @@ where
         }
         pv
     }
-    fn mid(&mut self, child: &mut Child, depth: usize) {
+    fn mid(&mut self, child: &mut Child, excluded_move: Option<GameMove>, depth: usize) {
         self.nodes += 1;
         if self.nodes > self.max_nodes {
             return;
@@ -407,7 +414,7 @@ where
                 cached_val.clone()
             } else {
                 self.tinue_cache_misses += 1;
-                let outcome = self.tinue_evaluate(depth);
+                let outcome = self.tinue_evaluate(depth, excluded_move);
                 self.tinue_attempts
                     .insert(self.board.hash(), outcome.clone());
                 outcome
@@ -442,7 +449,6 @@ where
                 DefenderOutcome::Defenses(moves) => moves,
             }
         };
-        assert!(!moves.is_empty());
 
         if child.game_move == GameMove::null_move() && !self.quiet {
             let debug_vec: Vec<_> = moves.iter().map(|m| m.to_ptn::<T>()).collect();
@@ -455,11 +461,13 @@ where
             .collect();
         loop {
             let limit = compute_bounds(&child_pns);
+
             if child.phi() <= limit.phi || child.delta() <= limit.delta {
                 child.update_bounds(limit, &mut self.bounds_table);
                 self.undo_move();
                 return;
             }
+
             let (best_idx, second_best_bounds) = Self::select_child(&child_pns);
             child.update_best_child(best_idx, child_pns[best_idx].game_move, &mut self.replies);
             let best_child = &mut child_pns[best_idx];
@@ -468,7 +476,7 @@ where
                 delta: min(child.phi(), second_best_bounds.delta + 1),
             };
             best_child.update_bounds(updated_bounds, &mut self.bounds_table);
-            self.mid(best_child, depth + 1);
+            self.mid(best_child, None, depth + 1);
         }
     }
     fn defender_responses(board: &mut T, hint: Option<&[GameMove]>) -> DefenderOutcome {
@@ -557,7 +565,7 @@ where
         self.zobrist_hist.pop();
         Some(())
     }
-    fn tinue_evaluate(&mut self, depth: usize) -> AttackerOutcome {
+    fn tinue_evaluate(&mut self, depth: usize, excluded_move: Option<GameMove>) -> AttackerOutcome {
         let pos = &mut self.board;
         let mut moves = Vec::new();
         if let Some(m) = pos.can_make_road(&mut moves, Some(self.top_moves[depth].get_best())) {
@@ -573,6 +581,14 @@ where
         moves.clear();
         crate::move_gen::generate_all_stack_moves(pos, &mut moves);
         crate::move_gen::generate_aggressive_place_moves(pos, &mut moves);
+
+        if depth == 0 {
+            if let Some(mv) = excluded_move {
+                assert!(moves.contains(&mv));
+                moves.retain(|m| *m != mv);
+            }
+        }
+
         let tak_threats = pos.get_tak_threats(&moves, Some(self.top_moves[depth + 2].get_best()));
         if tak_threats.is_empty() {
             AttackerOutcome::NoTakThreats
@@ -624,7 +640,7 @@ mod test {
         let board = Board6::try_from_tps(s).unwrap();
         let m = GameMove::try_from_ptn("f1", &board).unwrap();
         let mut search = TinueSearch::new(board);
-        assert_eq!(search.tinue_evaluate(0), AttackerOutcome::HasRoad(m));
+        assert_eq!(search.tinue_evaluate(0, None), AttackerOutcome::HasRoad(m));
     }
     #[test]
     fn defender_counterattack() {
