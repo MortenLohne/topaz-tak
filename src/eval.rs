@@ -526,7 +526,7 @@ impl Weights6 {
     pub fn add_noise(&mut self) {
         use rand_core::{RngCore, SeedableRng};
         let mut seed: [u8; 32] = [0; 32];
-        getrandom::getrandom(&mut seed).unwrap();
+        getrandom::fill(&mut seed).unwrap();
         let mut rng = rand_xoshiro::Xoshiro256PlusPlus::from_seed(seed);
         let offset = rng.next_u32() % 11 + 10;
         let st_row = (rng.next_u32() % 6) as i32;
