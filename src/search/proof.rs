@@ -1,5 +1,5 @@
 use super::*;
-use crate::board::TakBoard;
+use crate::board::{Board6, TakBoard};
 use crate::move_gen::{generate_all_moves, generate_all_place_moves};
 use crate::RevGameMove;
 use anyhow::{anyhow, Result};

@@ -225,8 +225,7 @@ pub fn main() {
                     proof_interactive(search).unwrap();
                 }
                 TakGame::Standard6(board) => {
-                    let excluded = GameMove::try_from_ptn("4f2+112", &board).unwrap();
-                    let search = crate::search::proof::TinueSearch::new(board).exclude(excluded);
+                    let search = crate::search::proof::TinueSearch::new(board);
                     proof_interactive(search).unwrap();
                 }
                 TakGame::Standard7(board) => {
